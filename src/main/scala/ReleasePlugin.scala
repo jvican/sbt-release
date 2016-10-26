@@ -126,24 +126,31 @@ object ReleasePlugin extends AutoPlugin {
       private lazy val releaseCommandKey = "release"
       private val FailureCommand = "--failure--"
 
-      private[this] val WithDefaults: Parser[ParseResult] =
+      val WithDefaults: Parser[ParseResult] =
         (Space ~> token("with-defaults")) ^^^ ParseResult.WithDefaults
-      private[this] val SkipTests: Parser[ParseResult] =
+      val SkipTests: Parser[ParseResult] =
         (Space ~> token("skip-tests")) ^^^ ParseResult.SkipTests
-      private[this] val CrossBuild: Parser[ParseResult] =
+      val CrossBuild: Parser[ParseResult] =
         (Space ~> token("cross")) ^^^ ParseResult.CrossBuild
-      private[this] val ReleaseVersion: Parser[ParseResult] =
+      val ReleaseVersion: Parser[ParseResult] =
         (Space ~> token("release-version") ~> Space ~> token(StringBasic, "<release version>")) map ParseResult.ReleaseVersion
-      private[this] val NextVersion: Parser[ParseResult] =
+      val NextVersion: Parser[ParseResult] =
         (Space ~> token("next-version") ~> Space ~> token(StringBasic, "<next version>")) map ParseResult.NextVersion
 
-      private[this] sealed abstract class ParseResult extends Product with Serializable
-      private[this] object ParseResult {
+      sealed abstract class ParseResult extends Product with Serializable
+      object ParseResult {
         final case class ReleaseVersion(value: String) extends ParseResult
         final case class NextVersion(value: String) extends ParseResult
         case object WithDefaults extends ParseResult
         case object SkipTests extends ParseResult
         case object CrossBuild extends ParseResult
+      }
+
+      def filterFailure(f: State => State)(s: State): State = {
+        s.remainingCommands match {
+          case FailureCommand :: tail => s.fail
+          case _ => f(s)
+        }
       }
 
       private[this] val releaseParser: Parser[Seq[ParseResult]] = (ReleaseVersion | NextVersion | WithDefaults | SkipTests | CrossBuild).*
@@ -162,13 +169,6 @@ object ReleasePlugin extends AutoPlugin {
           .put(commandLineNextVersion, args.collectFirst{case ParseResult.NextVersion(value) => value})
 
         val initialChecks = releaseParts.map(_.check)
-
-        def filterFailure(f: State => State)(s: State): State = {
-          s.remainingCommands match {
-            case FailureCommand :: tail => s.fail
-            case _ => f(s)
-          }
-        }
 
         val removeFailureCommand = { s: State =>
           s.remainingCommands match {
